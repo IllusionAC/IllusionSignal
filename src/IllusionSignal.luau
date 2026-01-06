@@ -101,14 +101,25 @@ return {
 			Fire = function(self: Signal, ...: any)
 				local node = head
 				while node do
-					node.fn(...)
+					local fn = node.fn
 					node = node.next
+					if fn then
+						fn(...)
+					end
 				end
 			end,
 
-			DisconnectAll = function(self: Signal)
+			DisconnectAll = function(self)
+				local node = head
+				while node do
+					node.fn = nil::any
+					local nextNode = node.next
+					node.next = nil
+					node = nextNode
+				end
 				head = nil
-			end,
+			end
+
 		}
 
 		return Signal
