@@ -8,7 +8,8 @@
 type func = (...any) -> ()
 
 type Connection = {
-	Connected: boolean,
+	fn: func?,
+	next: Connection?,
 	Disconnect: (self: Connection) -> (),
 }
 
@@ -20,106 +21,90 @@ type Signal = {
 	DisconnectAll: (self: Signal) -> (),
 }
 
-type Node = {
-	fn: func,
-	next: Node?,
-}
-
 return {
 	new = function(): Signal
-		local head: Node? = nil
+		local head: Connection? = nil
 
-		local function createConnection(node: Node, prev: Node?): Connection
-			local connected = true
+		local function disconnect(self: Connection)
+			local node = self
+			if node.fn == nil then
+				return
+			end
 
-			local conn: Connection = {
-				Connected = true,
-				Disconnect = function(self)
-					if not connected then return end
-					connected = false
-					self.Connected = false
+			node.fn = nil
 
-					if head == node then
-						head = node.next
-						return
-					end
+			if head == node then
+				head = node.next
+				return
+			end
 
-					local current = head
-					while current and current.next ~= node do
-						current = current.next
-					end
+			local current = head
+			while current and current.next ~= node do
+				current = current.next
+			end
 
-					if current then
-						current.next = node.next
-					end
-				end,
-			}
-
-			return conn
+			if current then
+				current.next = node.next
+			end
 		end
 
-		local Signal: Signal = {
+		local Signal: Signal
+		Signal = {
 			Connect = function(self: Signal, fn: func): Connection
-				local node: Node = {
+				local node: Connection = {
 					fn = fn,
 					next = head,
+					Disconnect = disconnect,
 				}
 
 				head = node
-				return createConnection(node)
+				return node
 			end,
 
 			Once = function(self: Signal, fn: func): Connection
-				local fired = false
-				local conn: Connection
+				local connection: Connection
 
-				conn = self:Connect(function(...)
-					if fired then return end
-					fired = true
-					conn:Disconnect()
+				connection = self.Connect(self, function(...)
+					connection:Disconnect()
 					fn(...)
 				end)
 
-				return conn
+				return connection
 			end,
 
 			Wait = function(self: Signal): ...any
 				local thread = coroutine.running()
-				local conn: Connection
-				local args: {any}? = nil
+				local connection: Connection
 
-				conn = self:Connect(function(...)
-					conn:Disconnect()
-					args = table.pack(...)
-					task.spawn(thread)
+				connection = self.Connect(self, function(...)
+					connection:Disconnect()
+					task.spawn(thread, ...)
 				end)
 
-				coroutine.yield()
-				return table.unpack(args or {})
+				return coroutine.yield()
 			end,
 
 			Fire = function(self: Signal, ...: any)
 				local node = head
 				while node do
 					local fn = node.fn
-					node = node.next
-					if fn then
+					if fn ~= nil then
 						fn(...)
 					end
+					node = node.next
 				end
 			end,
 
-			DisconnectAll = function(self)
+			DisconnectAll = function(self: Signal)
 				local node = head
 				while node do
-					node.fn = nil::any
+					node.fn = nil
 					local nextNode = node.next
 					node.next = nil
 					node = nextNode
 				end
 				head = nil
-			end
-
+			end,
 		}
 
 		return Signal
