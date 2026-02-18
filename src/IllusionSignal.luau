@@ -1,4 +1,7 @@
 --!strict
+--!optimize 2
+--!native
+
 --[[
   /////////////////////
  // Illusion Signal // 
@@ -7,18 +10,18 @@
 
 type func = (...any) -> ()
 
-type Connection = {
+export type Connection = {
 	fn: func?,
 	next: Connection?,
 	Disconnect: (self: Connection) -> (),
 }
 
-type Signal = {
+export type Signal = {
 	Connect: (self: Signal, fn: func) -> Connection,
 	Once: (self: Signal, fn: func) -> Connection,
 	Fire: (self: Signal, ...any) -> (),
 	Wait: (self: Signal) -> ...any,
-	DisconnectAll: (self: Signal) -> (),
+	Disconnect: (self: Signal) -> (),
 }
 
 return {
@@ -26,26 +29,19 @@ return {
 		local head: Connection? = nil
 
 		local function disconnect(self: Connection)
-			local node = self
-			if node.fn == nil then
-				return
-			end
+			if self.fn == nil then return end
 
-			node.fn = nil
+			self.fn = nil
 
-			if head == node then
-				head = node.next
+			if head == self then
+				head = self.next
 				return
 			end
 
 			local current = head
-			while current and current.next ~= node do
-				current = current.next
-			end
+			while current and current.next ~= self do current = current.next end
 
-			if current then
-				current.next = node.next
-			end
+			if current then current.next = self.next end
 		end
 
 		local Signal: Signal
@@ -86,23 +82,28 @@ return {
 
 			Fire = function(self: Signal, ...: any)
 				local node = head
+				
 				while node do
 					local fn = node.fn
+					
 					if fn ~= nil then
 						fn(...)
 					end
+					
 					node = node.next
 				end
 			end,
 
-			DisconnectAll = function(self: Signal)
+			Disconnect = function(self: Signal)
 				local node = head
+				
 				while node do
 					node.fn = nil
 					local nextNode = node.next
 					node.next = nil
 					node = nextNode
 				end
+				
 				head = nil
 			end,
 		}
