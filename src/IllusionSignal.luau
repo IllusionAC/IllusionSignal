@@ -13,6 +13,7 @@ type func = (...any) -> ()
 export type Connection = {
 	fn: func?,
 	next: Connection?,
+	prev: Connection?,
 	Disconnect: (self: Connection) -> (),
 }
 
@@ -26,22 +27,32 @@ export type Signal = {
 
 return {
 	new = function(): Signal
+		local firing = false
+		
 		local head: Connection? = nil
 
 		local function disconnect(self: Connection)
-			if self.fn == nil then return end
-
-			self.fn = nil
-
-			if head == self then
-				head = self.next
+			if self.fn == nil then
 				return
 			end
 
-			local current = head
-			while current and current.next ~= self do current = current.next end
+			self.fn = nil
 
-			if current then current.next = self.next end
+			local prev = self.prev
+			local next = self.next
+
+			if prev then
+				prev.next = next
+			else
+				head = next
+			end
+
+			if next then
+				next.prev = prev
+			end
+
+			self.next = nil
+			self.prev = nil
 		end
 
 		local Signal: Signal
@@ -50,8 +61,13 @@ return {
 				local node: Connection = {
 					fn = fn,
 					next = head,
+					prev = nil,
 					Disconnect = disconnect,
 				}
+
+				if head then
+					head.prev = node
+				end
 
 				head = node
 				return node
@@ -81,17 +97,22 @@ return {
 			end,
 
 			Fire = function(self: Signal, ...: any)
+				if firing then return end
+
+				firing = true
+
 				local node = head
-				
 				while node do
-					local fn = node.fn
-					
+					local current = node
+					node = node.next
+
+					local fn = current.fn
 					if fn ~= nil then
 						fn(...)
 					end
-					
-					node = node.next
 				end
+
+				firing = false
 			end,
 
 			Disconnect = function(self: Signal)
